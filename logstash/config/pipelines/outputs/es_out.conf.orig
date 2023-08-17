@@ -1,0 +1,69 @@
+input {
+  pipeline {
+    address => es_out
+  }
+}
+
+
+output {
+  if [log][sender][name] and [log][sender][type] {
+    opensearch {
+      hosts => "https://os01:9200"
+      #index => "%{init_source}"
+      index => "%{[log][sender][type]}_%{[log][sender][name]}"
+      manage_template => false
+      user => "admin"
+      password => "admin"
+      ssl => false
+      ssl_certificate_verification => false
+    }
+  }
+
+  kafka {
+      topic_id => "logstash"
+      codec => "json"
+      bootstrap_servers => "pkc-ld537.ca-central-1.aws.confluent.cloud:9092"
+      sasl_jaas_config => "org.apache.kafka.common.security.plain.PlainLoginModule required username='7XBV34XUK3T45LJ4'  password='w4kR6CA/r95rzpk1/z5jXiwB2wH9TYqkZbEdTxJy4IKy1PmqscbcVSEJVMfp3xQD';"
+      sasl_mechanism => "PLAIN"
+      security_protocol => "SASL_SSL"
+   }
+  
+
+  if ([category] =~ /bind/) {
+  kafka {
+      topic_id => "dns"
+      codec => "json"
+      bootstrap_servers => "pkc-ld537.ca-central-1.aws.confluent.cloud:9092"
+      sasl_jaas_config => "org.apache.kafka.common.security.plain.PlainLoginModule required username='7XBV34XUK3T45LJ4'  password='w4kR6CA/r95rzpk1/z5jXiwB2wH9TYqkZbEdTxJy4IKy1PmqscbcVSEJVMfp3xQD';"
+      sasl_mechanism => "PLAIN"
+      security_protocol => "SASL_SSL"
+   }
+  }
+
+  opensearch {
+    hosts => ["https://cloud.community.humio.com:443/api/v1/ingest/elastic-bulk"]
+    user => "shield53-infrastructure"
+    password => "899572ec-81ae-4231-b0e6-848c0c457e59"
+    ssl => true
+    ssl_certificate_verification => true
+    manage_template => false
+    http_compression => true
+  }
+
+  # unomaly output for testing
+  # unomaly {
+  #    host => "https://192.168.5.141:443"
+  #    ssl_certificate_validation => "disable"
+  # }
+  
+  # debug output
+  # stdout { codec => rubydebug }
+
+  # datetime backup by source %{+YYYY-MM-dd-HH}
+  #file {
+  #  path => "/mnt/backup/%{labels.client}/%{+YYYY-MM-dd}/%{init_source}-%{+YYYY-MM-dd}.gz"
+  #  gzip => true
+  #}
+
+
+}	

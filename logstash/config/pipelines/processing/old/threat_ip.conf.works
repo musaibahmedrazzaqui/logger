@@ -1,0 +1,161 @@
+input {
+  pipeline {
+    address => threat_ip
+  }
+}
+
+filter {
+
+#Source IP Processor
+  if [source][range] == "public" {
+
+    mutate { add_field => { "[forensics][threat][source][ip][bruteforce]" => false } }
+    mutate { add_field => { "[forensics][threat][source][ip][emerging_threats]" => false } }
+    mutate { add_field => { "[forensics][threat][source][ip][feodo]" => false } }
+    mutate { add_field => { "[forensics][threat][source][ip][sslblock]" => false } }
+    mutate { add_field => { "[forensics][threat][source][ip][talos]" => false } }
+    mutate { add_field => { "[forensics][threat][source][ip][torexit]" => false } }
+
+
+    mutate { copy => { "[source][ip]" => "source_field" }}
+    #mutate {convert => { "source_field" => "string" }}
+
+    translate {
+      source => "source_field"
+      target => "[forensics][threat][source][ip][feodo]"
+      #dictionary_path => '/mnt/lookup-table/threats/daily/ip_feodotracker.yaml'
+      dictionary_path => './config/pipelines/lookup/threats/feodora.yaml'
+      refresh_interval => 5
+    }
+
+    #cstewart@logger:/srv/docker/opensearch/mnt/lookup-table/threats/daily$ ls
+    #hash_sslblacklist.csv  ip_bruteforce.yaml  ip_dshield.yaml  ip_etknown.yaml  ip_feodotracker.yaml  ip_sslblock.yaml  ip_talos.yaml  ip_torexit.yaml  url_csvonline.csv
+    #cstewart@logger:/srv/docker/opensearch/mnt/lookup-table/threats/daily$
+
+    #translate {
+    #  field => "[source][ip]"
+    #  destination => "[forensics][threat][source][ip][bruteforce]"
+    #  dictionary_path => '/mnt/lookup-table/threats/daily/ip_bruteforce.yaml'
+    #  refresh_interval => 5
+    #}
+
+    #translate {
+    #  field => "[source][ip]"
+    #  destination => "[forensics][threat][source][ip][emerging_threats]"
+    #  dictionary_path => '/mnt/lookup-table/threats/daily/ip_etknown.yaml'
+    #  refresh_interval => 5
+    #}
+
+   # translate {
+   #   field => "[source][ip]"
+   #   destination => "[forensics][threat][source][ip][sslblock]"
+   #   dictionary_path => '/mnt/lookup-table/threats/daily/ip_sslblock.yaml'
+   #   refresh_interval => 5
+   # }
+
+   # translate {
+   #   field => "[source][ip]"
+   #   destination => "[forensics][threat][source][ip][talos]"
+   #   dictionary_path => '/mnt/lookup-table/threats/daily/ip_talos.yaml'
+   #   refresh_interval => 5
+   # }
+
+   # translate {
+   #   field => "[source][ip]"
+   #   destination => "[forensics][threat][source][ip][torexit]"
+   #   dictionary_path => '/mnt/lookup-table/threats/daily/ip_torexit.yaml'
+   #   refresh_interval => 5
+   # }
+
+    #if [forensics.threat.source.ip.feodora] or [forensics.threat.source.ip.bruteforce] or [forensics.threat.source.ip.emerging_threats] or [forensics.threat.source.ip.feodo] or [forensics.threat.source.ip.sslblock] or [forensics.threat.source.ip.talos] or [forensics.threat.source.ip.torexit] {
+    #  mutate { add_field => { "forensics.threat.source.ip.exists" => true } }
+    #}
+  }
+
+#destination IP Processor
+  if [destination][range] == "public" {
+
+    #mutate { add_field => { "[forensics][threat][destination][ip][bruteforce]" => false } }
+    #mutate { add_field => { "[forensics][threat][destination][ip][emerging_threats]" => false } }
+    #mutate { add_field => { "[forensics][threat][destination][ip][feodo]" => false } }
+    #mutate { add_field => { "[forensics][threat][destination][ip][sslblock]" => false } }
+    #mutate { add_field => { "[forensics][threat][destination][ip][talos]" => false } }
+    #mutate { add_field => { "[forensics][threat][destination][ip][torexit]" => false } }
+
+    mutate { copy => { "[destination][ip]" => "dest_field" }}
+    #mutate {convert => { "dest_field" => "string" }}
+
+    translate {
+      source => "[destination][geo][ip]"
+      target => "[forensics][threat][destination][ip][feodo]"
+      #dictionary_path => '/mnt/lookup-table/threats/daily/ip_feodotracker.yaml'
+      dictionary_path => '/mnt/feodora.yaml'
+      refresh_interval => 5
+      refresh_behaviour => "replace"
+    }
+
+    translate {
+      source => "[dest_field]"
+      target => "[forensics][threat][destination][ip][bruteforce]"
+      #dictionary_path => '/mnt/lookup-table/threats/daily/ip_feodotracker.yaml'
+      dictionary_path => '/mnt/feodora.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      source => "[event][reason]"
+      target => "[test]"
+      #dictionary_path => '/mnt/lookup-table/threats/daily/ip_feodotracker.yaml'
+      dictionary_path => '/mnt/test.yaml'
+      refresh_interval => 5
+    }
+
+    #cstewart@logger:/srv/docker/opensearch/mnt/lookup-table/threats/daily$ ls
+    #hash_sslblacklist.csv  ip_bruteforce.yaml  ip_dshield.yaml  ip_etknown.yaml  ip_feodotracker.yaml  ip_sslblock.yaml  ip_talos.yaml  ip_torexit.yaml  url_csvonline.csv
+    #cstewart@logger:/srv/docker/opensearch/mnt/lookup-table/threats/daily$
+
+    #translate {
+    #  field => "[destination][ip]"
+    #  destination => "[forensics][threat][destination][ip][bruteforce]"
+    #  dictionary_path => '/mnt/lookup-table/threats/daily/ip_bruteforce.yaml'
+    #  refresh_interval => 5
+    #}
+
+    #translate {
+    #  field => "[destination][ip]"
+    #  destination => "[forensics][threat][destination][ip][emerging_threats]"
+    #  dictionary_path => '/mnt/lookup-table/threats/daily/ip_etknown.yaml'
+    #  refresh_interval => 5
+    #}
+
+    #translate {
+    #  field => "[destination][ip]"
+    #  destination => "[forensics][threat][destination][ip][sslblock]"
+    #  dictionary_path => '/mnt/lookup-table/threats/daily/ip_sslblock.yaml'
+    #  refresh_interval => 5
+    #}
+
+    #translate {
+    #  field => "[destination][ip]"
+    #  destination => "[forensics][threat][destination][ip][talos]"
+    #  dictionary_path => '/mnt/lookup-table/threats/daily/ip_talos.yaml'
+    #  refresh_interval => 5
+    #}
+
+    #translate {
+    #  field => "[destination][ip]"
+    #  destination => "[forensics][threat][destination][ip][torexit]"
+    #  dictionary_path => '/mnt/lookup-table/threats/daily/ip_torexit.yaml'
+    #  refresh_interval => 5
+    #}
+
+
+  }
+
+}
+
+output {
+  pipeline { 
+    send_to => es_out
+  }
+}

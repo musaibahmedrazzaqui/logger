@@ -1,0 +1,5 @@
+"Value","Member name","Description"
+"2","Blockpage","User blocked from navigating to the URL by Office 365 ATP Safe Links."
+"3","PendingDetonationPage","User presented with the detonation pending page by Office 365 ATP Safe Links."
+"4","BlockPageOverride","User blocked from navigating to the URL by Office 365 ATP Safe Links; however user overrode block to navigate to the URL."
+"5","PendingDetonationPageOverride","User presented with the detonation page by Office 365 ATP Safe Links; however user overrode to navigate to the URL."

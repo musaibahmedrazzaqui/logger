@@ -1,0 +1,298 @@
+input {
+  pipeline {
+    address => paloalto
+  }
+}
+
+filter {
+       if ([message] =~ /TRAFFIC/) {
+            csv {
+                source => "message"
+                columns => [
+                    "FUTURE_USE", "ReceiveTime", "SerialNumber", "Type", "Threat_ContentType", "FUTURE_USE",
+                    "GeneratedTime", "SourceIP", "DestinationIP", "NATSourceIP", "NATDestinationIP", "RuleName",
+                    "SourceUser", "DestinationUser", "Application", "VirtualSystem", "SourceZone", "DestinationZone",
+                    "InboundInterface", "OutboundInterface", "LogForwardingProfile", "TimeLogged", "SessionID",
+                    "RepeatCount", "SourcePort", "DestinationPort", "NATSourcePort", "NATDestinationPort", "Flags",
+                    "Protocol", "Action", "Bytes", "BytesSent", "BytesReceived", "Packets", "StartTime", "ElapsedTime",
+                    "URLCategory", "FUTURE_USE", "SequenceNumber", "ActionFlags", "SourceLocation",
+                    "DestinationLocation", "FUTURE_USE", "PacketsSent", "PacketsReceived", "SessionEndReason",
+                    "DeviceGroupHierarchyLevel1", "DeviceGroupHierarchyLevel2", "DeviceGroupHierarchyLevel3",
+                    "DeviceGroupHierarchyLevel4", "VirtualSystemName", "DeviceName", "ActionSource", "SourceVMUUID",
+                    "DestinationVMUUID", "TunnelID_IMSI", "MonitorTag_IMEI", "ParentSessionID", "ParentStartTime",
+                    "TunnelType"
+                ]
+            }
+
+            mutate {
+                convert => [ "Bytes", "integer" ]
+                convert => [ "BytesReceived", "integer" ]
+                convert => [ "BytesSent", "integer" ]
+                convert => [ "ElapsedTime", "integer" ]
+                #convert => [ "GeoIP.dma_code", "integer" ]
+                #convert => [ "GeoIP.latitude", "float" ]
+                #convert => [ "GeoIP.longitude", "float" ]
+                convert => [ "NATDestinationPort", "integer" ]
+                convert => [ "NATSourcePort", "integer" ]
+                convert => [ "Packets", "integer" ]
+                convert => [ "PacketsReceived", "integer" ]
+                convert => [ "PacketsSent", "integer" ]
+                convert => [ "SequenceNumber", "integer" ]
+                #remove_field => [ "tags" ]
+                #add_tag => [ "PAN-OS_Traffic"]
+            }
+        }
+
+
+        else if ([message] =~ /THREAT/) {
+            csv {
+                source => "message"
+                columns => [
+                    "FUTURE_USE", "ReceiveTime", "SerialNumber", "Type", "Threat_ContentType", "FUTURE_USE",
+                    "GeneratedTime", "SourceIP", "DestinationIP", "NATSourceIP", "NATDestinationIP", "RuleName",
+                    "SourceUser", "DestinationUser", "Application", "VirtualSystem", "SourceZone", "DestinationZone",
+                    "InboundInterface", "OutboundInterface", "LogForwardingProfile", "FUTURE_USE", "SessionID",
+                    "RepeatCount", "SourcePort", "DestinationPort", "NATSourcePort", "NATDestinationPort", "Flags",
+                    "Protocol", "Action", "Miscellaneous", "ThreatID", "URLCategory", "Severity", "Direction",
+                    "SequenceNumber", "ActionFlags", "SourceLocation", "DestinationLocation", "FUTURE_USE",
+                    "ContentType", "PCAP_ID", "FileDigest", "Cloud", "URLIndex", "UserAgent", "FileType",
+                    "X-Forwarded-For", "Referer", "Sender", "Subject", "Recipient", "ReportID",
+                    "DeviceGroupHierarchyLevel1", "DeviceGroupHierarchyLevel2", "DeviceGroupHierarchyLevel3",
+                    "DeviceGroupHierarchyLevel4", "VirtualSystemName", "DeviceName", "FUTURE_USE", "SourceVMUUID",
+                    "DestinationVMUUID", "HTTPMethod", "TunnelID_IMSI", "MonitorTag_IMEI", "ParentSessionID",
+                    "ParentStartTime", "TunnelType", "ThreatCategory", "ContentVersion", "FUTURE_USE"
+                ]
+            }
+
+            mutate {
+                #convert => [ "GeoIP.dma_code", "integer" ]
+                #convert => [ "GeoIP.latitude", "float" ]
+                #convert => [ "GeoIP.longitude", "float" ]
+                convert => [ "NATDestinationPort", "integer" ]
+                convert => [ "NATSourcePort", "integer" ]
+                convert => [ "SequenceNumber", "integer" ]
+                #add_tag => ["PAN-OS_Threat"]
+            }
+        }
+
+        else if ([message] =~ /CONFIG/) {
+            csv {
+                source => "message"
+                columns => [
+                    "FUTURE_USE", "Receive Time", "Serial Number", "Type", "Subtype", "FUTURE_USE", "Generated Time", "Host",
+                    "Virtual System", "Command", "Admin", "Client", "Result", "Configuration Path", "Before Change Detail",
+                    "After Change Detail", "Sequence Number", "Action Flags", "Device Group Hierarchy Level 1",
+                    "Device Group Hierarchy Level 2", "Device Group Hierarchy Level 3", "Device Group Hierarchy Level 4",
+                    "Virtual System Name", "Device Name"
+                ]
+            }
+
+        }
+
+        else if ([message] =~ /SYSTEM/) {
+            csv {
+                source => "message"
+                columns => [
+                    "FUTURE_USE", "Receive Time", "Serial Number", "Type", "Content/Threat Type", "FUTURE_USE", "Generated Time",
+                    "Virtual System", "Event ID", "Object", "FUTURE_USE", "FUTURE_USE", "Module", "Severity", "Description",
+                    "Sequence Number", "Action Flags", "Device Group Hierarchy Level 1", "Device Group Hierarchy Level 2",
+                    "Device Group Hierarchy Level 3", "Device Group Hierarchy Level 4", "Virtual System Name", "Device Name"
+                ]
+            }
+
+        }
+
+        ## ********** REMOVE MESSAGE IF POSSIBLE ************
+        #mutate {
+            # Original message has been fully parsed, so remove it.
+            #remove_field => [ "message" ]
+        #}
+
+        # Geolocate logs that have SourceIP if that SourceIP is a non-RFC1918 address
+        if [SourceIP] and [SourceIP] !~ "(^127\.0\.0\.1)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.)|(^169\.254\.)" {
+
+	     geoip {
+		default_database_type => "City"
+                source => "SourceIP"
+		target => "geo"
+		tag_on_failure => ["geoip-city-failed"]
+	     }
+
+             geoip {
+	       default_database_type => "ASN"
+               source => "SourceIP"
+	       target => "geo"
+	       tag_on_failure => ["geoip-asn-failed"]
+	      }
+
+	  mutate { add_field => {"source.range" => public} }
+
+
+        } else {
+
+	  mutate { add_field => {"source.range" => private} }
+
+        }
+
+        # Geolocate logs that have DestinationIP and if that DestinationIP is a non-RFC1918 address
+        if [DestinationIP] and [DestinationIP] !~ "(^127\.0\.0\.1)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.)|(^169\.254\.)" {
+
+	     mutate { add_field => {"destination.range" => public} }
+
+	     geoip {
+		default_database_type => "City"
+                source => "DestinationIP"
+		target => "geo"
+		tag_on_failure => ["geoip-city-failed"]
+	     }
+
+             geoip {
+	       default_database_type => "ASN"
+               source => "DestinationIP"
+	       target => "geo"
+	       tag_on_failure => ["geoip-asn-failed"]
+	      }
+
+
+        } else {
+
+	  mutate { add_field => {"destination.range" => private} }
+
+        }
+
+        # way to be able to do top N terms queries on flows, not just on one field.
+        if [SourceIP] and [DestinationIP] {
+            fingerprint {
+                concatenate_sources => true
+                method => "SHA1"
+                key => "logstash"
+                source => [ "SourceIP", "SourcePort", "DestinationIP", "DestinationPort", "Protocol" ]
+            }
+         }
+
+         # rename fields to standard schema
+         mutate { 
+           rename => { "SerialNumber" => "device.serial_number" } 
+           rename => { "Serial Number" => "device.serial_number" } 
+           rename => { "DeviceName" => "device.name" } 
+           rename => { "Device Name" => "device.name" } 
+           rename => { "DestinationIP" => "destination.ip" } 
+           rename => { "DestinationLocation" => "destination.location" } 
+           rename => { "DestinationZone" => "destination.zone" } 
+           rename => { "DestinationUser" => "destination.user" } 
+           rename => { "NATDestinationIP" => "destination_nat.ip" } 
+           rename => { "DestinationPort" => "destination.port" }
+           rename => { "FileDigest" => "file.digest" }
+           rename => { "FileType" => "file.type" }
+           rename => { "NATDestinationPort" => "destination_nat.port" }
+           rename => { "SourceIP" => "source.ip" }
+           rename => { "NATSourceIP" => "source_nat.ip" }
+           rename => { "SourcePort" => "source.port" }
+           rename => { "NATSourcePort" => "source_nat.port" }
+           rename => { "SourceZone" => "source.zone" }
+           rename => { "SourceUser" => "source.user" }
+           rename => { "SourceLocation" => "source.location" }
+           rename => { "InboundInterface" => "network.interface_inbound" }
+           rename => { "OutboundInterface" => "network.interface_outbound" }
+           rename => { "Action" => "network.action" }
+           rename => { "ActionSource" => "network.action_source" }
+           rename => { "Application" => "network.application" }
+           rename => { "URLCategory" => "network.url_category" }
+           rename => { "Miscellaneous" => "network.misc" }
+           rename => { "HTTPMethod" => "http.method" }
+           rename => { "Referer" => "http.referer" }
+           rename => { "UserAgent" => "http.user_agent" }
+           rename => { "X-Forwarded-For" => "http.x_forward" }
+           rename => { "Protocol" => "network.protocol" }
+           rename => { "Bytes" => "network.bytes" }
+           rename => { "BytesReceived" => "network.recieved" }
+           rename => { "BytesSent" => "network.sent" }
+           rename => { "Cloud" => "network.cloud" }
+           rename => { "ContentType" => "network.content_type" }
+           rename => { "ContentVersion" => "network.content_version" }
+           rename => { "Direction" => "network.direction" }
+           rename => { "Sender" => "email.sender" }
+           rename => { "Recipient" => "email.recipient" }
+           rename => { "Subject" => "email.subject" }
+           rename => { "Packets" => "network.packets" }
+           rename => { "PacketsReceived" => "network.packets_received" }
+           rename => { "PacketsSent" => "network.packets_sent" }
+           rename => { "Type" => "network.type" }
+           rename => { "RuleName" => "network.rule" }
+           rename => { "SessionID" => "network.session_id" }
+           rename => { "SessionEndReason" => "network.action_session_end" }
+           rename => { "TunnelType" => "network.tunneltype" }
+           rename => { "TunnelID_IMSI" => "network.tunnelid" }
+           rename => { "TimeLogged" => "time.logged" }
+           rename => { "StartTime" => "time.start" }
+           rename => { "ReceiveTime" => "time.received" }
+           rename => { "Receive Time" => "time.received" }
+           rename => { "GeneratedTime" => "time.generated" }
+           rename => { "Generated Time" => "time.generated" }
+           rename => { "ParentStartTime" => "time.parentstart" }
+           rename => { "ThreatCategory" => "threat.category" }
+           rename => { "ThreatID" => "threat.id" }
+           rename => { "Severity" => "threat.severity" }
+           rename => { "VirtualSystem" => "device.virtualsystem" }
+           rename => { "Virtual System" => "device.virtualsystem" }
+           rename => { "VirtualSystemName" => "device.virtualsystemname" }
+           rename => { "Virtual System Name" => "device.virtualsystemname" }
+           rename => { "Content/Threat Type" => "threat.content_type" }
+           rename => { "Description" => "system.description" }
+           rename => { "Event ID" => "system.event_id" }
+           rename => { "Module" => "system.module" }
+           rename => { "Object" => "system.object" }
+           remove_field => [ "ActionFlags" ]
+           remove_field => [ "Action Flags" ]
+           remove_field => [ "DestinationVMUUID" ]
+           remove_field => [ "DeviceGroupHierarchyLevel1" ]
+           remove_field => [ "DeviceGroupHierarchyLevel2" ]
+           remove_field => [ "DeviceGroupHierarchyLevel3" ]
+           remove_field => [ "DeviceGroupHierarchyLevel4" ]
+           remove_field => [ "ElapsedTime" ]
+           remove_field => [ "FUTURE_USE" ]
+           remove_field => [ "Flags" ]
+           remove_field => [ "MonitorTag_IMEI" ]
+           remove_field => [ "Threat_ContentType" ]
+           remove_field => [ "SourceVMUUID" ]
+           remove_field => [ "RepeatCount" ]
+           remove_field => [ "ParentSessionID" ]
+           remove_field => [ "LogForwardingProfile" ]
+           remove_field => [ "column62" ]
+           remove_field => [ "column63" ]
+           remove_field => [ "column64" ]
+           remove_field => [ "column65" ]
+           remove_field => [ "column66" ]
+           remove_field => [ "column67" ]
+           remove_field => [ "column68" ]
+           remove_field => [ "column69" ]
+           remove_field => [ "column70" ]
+           remove_field => [ "column71" ]
+           remove_field => [ "column72" ]
+           remove_field => [ "column73" ]
+           remove_field => [ "column74" ]
+           remove_field => [ "column75" ]
+           remove_field => [ "column76" ]
+           remove_field => [ "column77" ]
+           remove_field => [ "column78" ]
+           remove_field => [ "column79" ]
+           remove_field => [ "PCAP_ID" ]
+           remove_field => [ "ReportID" ]
+           remove_field => [ "URLIndex" ]
+           remove_field => [ "SequenceNumber" ]
+           remove_field => [ "Sequence Number" ]
+           remove_field => [ "Device Group Hierarchy Level 1" ]
+           remove_field => [ "Device Group Hierarchy Level 2" ]
+           remove_field => [ "Device Group Hierarchy Level 3" ]
+           remove_field => [ "Device Group Hierarchy Level 4" ]
+
+           add_field => {"device.type" => fw}
+
+        }
+}
+
+output {
+  pipeline {
+    send_to => normalization
+  }
+}

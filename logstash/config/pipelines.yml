@@ -1,0 +1,49 @@
+# This file is where you define your pipelines. You can define multiple.
+# For more information on multiple pipelines, see the documentation:
+#   https://www.elastic.co/guide/en/logstash/current/multiple-pipelines.html
+
+#- pipeline.id: main
+#  path.config: "/usr/share/logstash/pipeline"
+
+#- pipeline.id: main
+#  path.config: "/usr/share/logstash/config/conf.d/*.conf"
+
+#Input
+#- pipeline.id: main
+#path.config: "./config/pipelines/inputs/kafka_in.conf"
+
+#- pipeline.id: input_winlog
+#path.config: "./config/pipelines/inputs/winbeats_in.conf"
+
+# Finished Pipeline
+- pipeline.id: fw_paloalto
+  path.config: "./config/pipelines/inputs/senders/fw_paloalto.conf"
+- pipeline.id: fw_pfsense
+  path.config: "./config/pipelines/inputs/senders/fw_pfsense.conf"
+- pipeline.id: os_windows
+  path.config: "./config/pipelines/inputs/senders/os_windows.conf"
+- pipeline.id: os_linux
+  path.config: "./config/pipelines/inputs/senders/os_linux.conf"
+- pipeline.id: os_linux_filebeats
+  path.config: "./config/pipelines/inputs/senders/os_linux_filebeats.conf"
+#- pipeline.id: others_filebeats
+#  path.config: "./config/pipelines/inputs/senders/others_filebeats.conf"
+- pipeline.id: threat_misp
+  path.config: "./config/pipelines/inputs/senders/threat_misp.conf"
+- pipeline.id: threat_intel
+  path.config: "./config/pipelines/inputs/senders/threat_intel.conf"
+
+# Processing Pipeline
+- pipeline.id: normalization
+  path.config: "./config/pipelines/processing/normalization.conf"
+- pipeline.id: processing_ip
+  path.config: "./config/pipelines/processing/processing_ip.conf"
+- pipeline.id: threat_ip
+  path.config: "./config/pipelines/processing/threat_ip.conf"
+# Custom per customer pipeline
+#- pipeline.id: customization
+#  path.config: "./config/pipelines/customization/customization.conf"
+
+# Output Pipeline
+- pipeline.id: es_out
+  path.config: "./config/pipelines/outputs/es_out.conf"

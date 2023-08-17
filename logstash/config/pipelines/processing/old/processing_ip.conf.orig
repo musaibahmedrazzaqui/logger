@@ -1,0 +1,217 @@
+input {
+  pipeline {
+    address => processing_ip
+  }
+}
+
+filter {
+
+    mutate { add_field => { "parser_ip" => "beginning" }}
+
+
+  # IP Range Processing
+  if [source][ip] {
+    cidr {
+      network => ["192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8"]
+      address => ["%{source.ip}"]
+      add_field => { "source.range" => "private" }
+
+    }
+
+    #if ![source][range] {
+    #  mutate { add_field => { "[source][range]" => "public" }}
+
+
+      # Source GEOIP Processing
+      geoip {
+        source => "[source.ip]"
+        target => "source.geo"
+        fields => ["city_name", "country_code2", "country_name", "location", "postal_code"]
+        add_field => {"source.geo.country_iso_code" => "%{[source.geo][country_code2]}"}
+      }
+
+      # Source ASN Processing
+      geoip {
+        default_database_type => "ASN"
+        source => "[source.ip]"
+        target => "source.geo"
+        tag_on_failure => ["geoip-asn-failed"]
+      }
+
+      mutate {
+        remove_field => ["[source.geo][country_code2]"]
+      }
+
+    }
+  }
+
+  if [destination][ip] {
+    cidr {
+      network => ["192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8"]
+      address => ["%{destination.ip}"]
+      add_field => { "destination.range" => "private" }
+    }
+    #if ![destination][range] {
+     # mutate { add_field => { "[destination][range]" => "public" }}
+
+
+      # Target GEOIP Processing
+      geoip {
+        source => "[destination.ip]"
+        target => "destination.geo"
+        fields => ["city_name", "country_code2", "country_name", "location", "postal_code"]
+        add_field => {"destination.geo.country_iso_code" => "%{[destination.geo][country_code2]}"}
+      }
+
+      # Target ASN Processing
+      geoip {
+        default_database_type => "ASN"
+        source => "[destination.ip]"
+        target => "destination.geo"
+        tag_on_failure => ["geoip-asn-failed"]
+      }
+
+      mutate {
+        remove_field => ["[destination.geo][country_code2]"]
+      }
+
+    }
+  }
+
+  # way to be able to do top N terms queries on flows, not just on one field.
+  if [source][ip] and [destination][ip] {
+            fingerprint {
+                concatenate_sources => true
+                method => "SHA1"
+                key => "logstash"
+                source => [ "destination.ip", "destination.port" ]
+            }
+  }
+
+
+#Source IP Processor
+  if [source][range] == "public" {
+
+    mutate { add_field => { "forensics.threat.source.ip.bruteforce" => false } }
+    mutate { add_field => { "forensics.threat.source.ip.emerging_threats" => false } }
+    mutate { add_field => { "forensics.threat.source.ip.feodo" => false } }
+    mutate { add_field => { "forensics.threat.source.ip.sslblock" => false } }
+    mutate { add_field => { "forensics.threat.source.ip.talos" => false } }
+    mutate { add_field => { "forensics.threat.source.ip.torexit" => false } }
+
+    #cstewart@logger:/srv/docker/opensearch/mnt/lookup-table/threats/daily$ ls
+    #hash_sslblacklist.csv  ip_bruteforce.yaml  ip_dshield.yaml  ip_etknown.yaml  ip_feodotracker.yaml  ip_sslblock.yaml  ip_talos.yaml  ip_torexit.yaml  url_csvonline.csv
+    #cstewart@logger:/srv/docker/opensearch/mnt/lookup-table/threats/daily$
+
+    translate {
+      field => "source.ip"
+      destination => "forensics.threat.source.ip.bruteforce"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_bruteforce.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "source.ip"
+      destination => "forensics.threat.source.ip.emerging_threats"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_etknown.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "source.ip"
+      destination => "forensics.threat.source.ip.feodo"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_feodotracker.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "source.ip"
+      destination => "forensics.threat.source.ip.sslblock"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_sslblock.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "source.ip"
+      destination => "forensics.threat.source.ip.talos"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_talos.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "source.ip"
+      destination => "forensics.threat.source.ip.torexit"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_torexit.yaml'
+      refresh_interval => 5
+    }
+
+    #if [forensics.threat.source.ip.feodora] or [forensics.threat.source.ip.bruteforce] or [forensics.threat.source.ip.emerging_threats] or [forensics.threat.source.ip.feodo] or [forensics.threat.source.ip.sslblock] or [forensics.threat.source.ip.talos] or [forensics.threat.source.ip.torexit] {
+    #  mutate { add_field => { "forensics.threat.source.ip.exists" => true } }
+    #}
+  }
+
+
+    mutate { add_field => { "parser_ip2" => "destination_range_public" }}
+
+#destination IP Processor
+  if [destination][range] == "public" {
+
+    mutate { add_field => { "forensics.threat.destination.ip.bruteforce" => false } }
+    mutate { add_field => { "forensics.threat.destination.ip.emerging_threats" => false } }
+    mutate { add_field => { "forensics.threat.destination.ip.feodo" => false } }
+    mutate { add_field => { "forensics.threat.destination.ip.sslblock" => false } }
+    mutate { add_field => { "forensics.threat.destination.ip.talos" => false } }
+    mutate { add_field => { "forensics.threat.destination.ip.torexit" => false } }
+
+    translate {
+      field => "destination.ip"
+      destination => "forensics.threat.destination.ip.bruteforce"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_bruteforce.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "destination.ip"
+      destination => "forensics.threat.destination.ip.emerging_threats"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_etknown.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "destination.ip"
+      destination => "forensics.threat.destination.ip.feodo"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_feodotracker.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "destination.ip"
+      destination => "forensics.threat.destination.ip.sslblock"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_sslblock.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "destination.ip"
+      destination => "forensics.threat.destination.ip.talos"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_talos.yaml'
+      refresh_interval => 5
+    }
+
+    translate {
+      field => "destination.ip"
+      destination => "forensics.threat.destination.ip.torexit"
+      dictionary_path => '/mnt/lookup-table/threats/daily/ip_torexit.yaml'
+      refresh_interval => 5
+    }
+
+
+  }
+
+}
+
+output {
+  pipeline { 
+    send_to => es_out
+  }
+}

@@ -1,0 +1,335 @@
+input {
+  udp {
+    port => 6516
+    tags => "pfsense"
+  }
+}
+
+filter {
+
+    mutate { remove_field => [ "client" ] }
+    mutate { remove_field => [ "init_source" ] }
+    #mutate { add_field => { "init_source" => "neta_pf_sense" }}
+    #mutate { add_field => { "client" => "mountbatten" }}
+    mutate { add_field => { "[organization][name]" => "mountbatten" }}
+    mutate { add_field => { "[log][sender][type]" => "neta" }}
+    mutate { add_field => { "[log][sender][name]" => "pf_sense" }}
+ 
+
+  mutate {
+    replace => { "[log][sender][name]" => "pfsense"}
+    remove_field => ["host"]
+  }
+
+ ruby {
+    code => '
+      value = event.get("message").split(/,(?!(?=[^\"]*\"[^\"]*(?:\"[^\"]*\"[^\"]*)*$))/);
+      event.set("split_input", value);
+      lastIndex = event.get("split_input").length - 1;
+    '  
+  }
+
+  if "filterlog" in [message] {
+    mutate { add_field => { "[event][module]" => "filterlog"}}
+  } else if "charon" in [message] {
+    mutate { add_field => { "[event][module]" => "charon"}}
+  } else if "kernel" in [message] {
+    grok { 
+      match => {"[split_input][0]" => 'kernel: arp: %{MAC:[host][mac]} is using my IP address %{IP:[source][ip]} on %{DATA:[observer][ingress][interface][name]}!'} 
+      tag_on_failure => ["parse_kernel_failed"] 
+    }
+    mutate { add_field => { "[event][module]" => "kernel"}}
+  }
+
+  if "filterlog " in [split_input][0] {
+    grok { 
+      match => {"[split_input][0]" => ' %{IPORHOST:[agent][name]} filterlog %{INT} - - %{INT:[rule][id]}'} 
+      tag_on_failure => ["parse_event.[agent][name]_failed"] 
+    }
+  } else if "filterlog[" in [split_input][0] {
+    grok { 
+      match => {"[split_input][0]" => 'filterlog\[%{INT}\]\: %{INT:[rule][id]}'} 
+      tag_on_failure => ["parse_event.[agent][name]_failed"] 
+    }
+  }
+
+
+  if "dst " in [message] and "src " in [message] {
+    grok { 
+      match => {"message" => 'src %{IP:[source][ip]} dst %{IP:[destination][ip]}'} 
+      tag_on_failure => ["parse_src_and_dst_failed"] 
+    }
+  } else if " packet: from" in [message] {
+    grok { 
+      match => {"message" => '%{NOTSPACE:[@metadata][direction]} packet\: from %{IP:[source][ip]}\[%{INT}\] to %{IP:[destination][ip]}\[%{INT}\]( \(%{INT:[network][bytes]} %{DATA}\))?'} 
+      tag_on_failure => ["parse_from_to_failed"] 
+    }
+    if "received" in [@metadata][direction] {
+      mutate { add_field => { "[network][direction]" => "inbound"}}
+    } else if "sending" in [@metadata][direction] {
+      mutate { add_field => { "[network][direction]" => "outbound"}}
+    }
+  }
+  if [split_input] {
+    if [rule][id] {
+      mutate {
+        copy => {
+          "[split_input][1]" => "[pfsense][sub-rule-number]"
+          "[split_input][2]" => "[pfsense][anchor]"
+          "[split_input][3]" => "[pfsense][tracker]"
+          "[split_input][4]" => "[observer][ingress][interface][name]"
+          "[split_input][5]" => "[event][reason]"
+          "[split_input][6]" => "[event][action]"
+          "[split_input][7]" => "[@metadata][direction]"
+          "[split_input][8]" => "[network][type]"
+        }
+      }
+      
+      if "in" in [@metadata][direction] {
+        mutate { add_field => { "[network][direction]" => "inbound"}}
+      } else if "out" in [@metadata][direction] {
+        mutate { add_field => { "[network][direction]" => "outbound"}}
+      }
+
+      if [network][type] =~ /^4$/{ #IPv4
+        mutate { update => { "[network][type]" => "ipv4"} }
+        mutate {
+          copy => {
+            "[split_input][9]"  => "[pfsense][tos]"
+            "[split_input][10]" => "[pfsense][ecn]"
+            "[split_input][11]" => "[pfsense][ttl]"
+            "[split_input][12]" => "[pfsense][id]"
+            "[split_input][13]" => "[pfsense][offset]"
+            "[split_input][14]" => "[pfsense][flags]"
+            "[split_input][15]" => "[network][iana_number]"
+            "[split_input][16]" => "[network][protocol]"
+            "[split_input][17]" => "[network][packets]"
+            "[split_input][18]" => "[source][ip]"
+            "[split_input][19]" => "[destination][ip]"
+          }
+        }
+        mutate { add_field => { "[log][type]" => "%{[network][type]}_%{[network][protocol]}" } }
+        
+        if [network][iana_number] =~ /^1$/{ #ICMP
+          mutate {
+            copy => {
+              "[split_input][20]" => "[log][subtype]"
+            }
+          }
+          if [log][subtype] =~ /^(request|reply)$/{
+            mutate {
+              copy => {
+                "[split_input][21]" => "[pfsense][icmp-id]"
+                "[split_input][22]" => "[pfsense][icmp-sequence]"
+              } 
+            }
+          } else if [log][subtype] =~ /^unreachproto$/ {
+            mutate {
+              copy => {
+                "[split_input][21]" => "[destination][ip]"
+                "[split_input][22]" => "[pfsense][unreachable-protocol-id]"
+                "[split_input][23]" => "[destination][port]"
+              } 
+            }
+          } else if [log][subtype] =~ /^(unreach|timexceed|paramprob|redirect|maskreply)$/ {
+            mutate {
+              copy => {
+                "[split_input][21]" => "[error][message]"
+              } 
+            }
+          } else if [log][subtype] =~ /^needfrag$/ {
+            mutate {
+              copy => {
+                "[split_input][21]" => "[destination][ip]"
+                "[split_input][22]" => "[pfsense][icmp-mtu]"
+              } 
+            }
+          } else if [log][subtype] =~ /^tstamp$/ {
+            mutate {
+              copy => {
+                "[split_input][21]" => "[pfsense][icmp-id]"
+                "[split_input][22]" => "[pfsense][icmp-sequence]"
+              } 
+            }
+          } else if [log][subtype] =~ /^tstampreply$/ {
+            mutate {
+              copy => {
+                "[split_input][21]" => "[pfsense][icmp-id]"
+                "[split_input][22]" => "[pfsense][icmp-sequence]"
+                "[split_input][23]" => "[pfsense][icmp-otime]"
+                "[split_input][24]" => "[pfsense][icmp-rtime]"
+                "[split_input][25]" => "[pfsense][icmp-ttime]"
+              } 
+            }
+          } else { # default -> <text>
+            mutate {
+              copy => {
+                "[split_input][21]" => "[error][message]"
+              } 
+            }
+          } 
+
+        } else if [network][iana_number] =~ /^6$/{ #TCP
+          mutate {
+            copy => {
+              "[split_input][20]" => "[source][port]"
+              "[split_input][21]" => "[destination][port]"
+              "[split_input][22]" => "[pfsense][data-length]"
+              "[split_input][23]" => "[pfsense][tcp-flags]"
+              "[split_input][24]" => "[pfsense][sequence-number]"
+              "[split_input][25]" => "[pfsense][ack-number]"
+              "[split_input][26]" => "[pfsense][tcp-window]"
+              "[split_input][27]" => "[pfsense][urg]"
+              "[split_input][28]" => "[pfsense][tcp-options]"
+            }
+          }
+        } else if [network][iana_number] =~ /^12$/{ #UDP
+          mutate {
+            copy => {
+              "[split_input][20]" => "[source][port]"
+              "[split_input][21]" => "[destination][port]"
+              "[split_input][22]" => "[pfsense][data-length]"
+            }
+          }
+        } else if [network][iana_number] =~ /^17$/{ #UDP
+          mutate {
+            copy => {
+              "[split_input][20]" => "[source][port]"
+              "[split_input][21]" => "[destination][port]"
+              "[split_input][22]" => "[pfsense][data-length]"
+            }
+          }
+        } else if [network][iana_number] =~ /^112$/{ #CARP
+          mutate {
+            copy => {
+              "[split_input][20]" => "[pfsense][carp-type]"
+              "[split_input][21]" => "[pfsense][carp-ttl]"
+              "[split_input][22]" => "[pfsense][vhid]"
+              "[split_input][23]" => "[pfsense][version]"
+              "[split_input][24]" => "[pfsense][advskew]"
+              "[split_input][25]" => "[pfsense][advbase]"
+            }
+          }
+        } 
+      } else if [network][type] =~ /^6$/{ #IPv6
+        mutate { update => { "[network][type]" => "ipv6"} }
+        mutate {
+          copy => {
+            "[split_input][9]"  => "[pfsense][class]"
+            "[split_input][10]" => "[pfsense][flow-label]"
+            "[split_input][11]" => "[pfsense][hop-limit]"
+            "[split_input][12]" => "[network][protocol]"
+            "[split_input][13]" => "[network][iana_number]"
+            "[split_input][14]" => "[network][packets]"
+            "[split_input][15]" => "[source][ip]"
+            "[split_input][16]" => "[destination][ip]"
+          }
+        }
+        mutate { add_field => { "[log][type]" => "%{[network][type]}_%{[network][protocol]}" } }
+
+        if [network][iana_number] =~ /^1$/{ #ICMP
+          mutate {
+            copy => {
+              "[split_input][17]" => "[log][subtype]"
+            }
+          }
+          if [log][subtype] =~ /^(request|reply)$/{
+            mutate {
+              copy => {
+                "[split_input][18]" => "[pfsense][icmp-id]"
+                "[split_input][19]" => "[pfsense][icmp-sequence]"
+              } 
+            }
+          } else if [log][subtype] =~ /^unreachproto$/ {
+            mutate {
+              copy => {
+                "[split_input][18]" => "[destination][ip]"
+                "[split_input][19]" => "[pfsense][unreachable-protocol-id]"
+                "[split_input][20]" => "[destination][port]"
+              } 
+            }
+          } else if [log][subtype] =~ /^(unreach|timexceed|paramprob|redirect|maskreply)$/ {
+            mutate {
+              copy => {
+                "[split_input][18]" => "[error][message]"
+              } 
+            }
+          } else if [log][subtype] =~ /^needfrag$/ {
+            mutate {
+              copy => {
+                "[split_input][18]" => "[destination][ip]"
+                "[split_input][19]" => "[pfsense][icmp-mtu]"
+              } 
+            }
+          } else if [log][subtype] =~ /^tstamp$/ {
+            mutate {
+              copy => {
+                "[split_input][18]" => "[pfsense][icmp-id]"
+                "[split_input][19]" => "[pfsense][icmp-sequence]"
+              } 
+            }
+          } else if [log][subtype] =~ /^tstampreply$/ {
+            mutate {
+              copy => {
+                "[split_input][18]" => "[pfsense][icmp-id]"
+                "[split_input][19]" => "[pfsense][icmp-sequence]"
+                "[split_input][20]" => "[pfsense][icmp-otime]"
+                "[split_input][21]" => "[pfsense][icmp-rtime]"
+                "[split_input][22]" => "[pfsense][icmp-ttime]"
+              } 
+            }
+          } else { # default -> <text>
+            mutate {
+              copy => {
+                "[split_input][18]" => "[error][message]"
+              } 
+            }
+          } 
+        } else if [network][iana_number] =~ /^6$/{ #TCP
+          mutate {
+            copy => {
+              "[split_input][17]" => "[source][port]"
+              "[split_input][18]" => "[destination][port]"
+              "[split_input][19]" => "[pfsense][data-length]"
+              "[split_input][20]" => "[pfsense][tcp-flags]"
+              "[split_input][21]" => "[pfsense][sequence-number]"
+              "[split_input][22]" => "[pfsense][ack-number]"
+              "[split_input][23]" => "[pfsense][tcp-window]"
+              "[split_input][24]" => "[pfsense][urg]"
+              "[split_input][25]" => "[pfsense][tcp-options]"
+            }
+          }
+        } else if [network][iana_number] =~ /^12$/{ #UDP
+          mutate {
+            copy => {
+              "[split_input][17]" => "[source][port]"
+              "[split_input][18]" => "[destination][port]"
+              "[split_input][19]" => "[pfsense][data-length]"
+            }
+          }
+        } else if [network][iana_number] =~ /^112$/{ #CARP
+          mutate {
+            copy => {
+              "[split_input][17]" => "[pfsense][carp-type]"
+              "[split_input][18]" => "[pfsense][carp-ttl]"
+              "[split_input][19]" => "[pfsense][vhid]"
+              "[split_input][20]" => "[pfsense][version]"
+              "[split_input][21]" => "[pfsense][advbase]"
+              "[split_input][22]" => "[pfsense][advskew]"
+            }
+          }
+        }
+
+      }
+    }
+
+    mutate { remove_field => ["split_input"] }
+  }
+}
+
+
+output {
+  pipeline {
+    send_to => normalization
+  }
+}

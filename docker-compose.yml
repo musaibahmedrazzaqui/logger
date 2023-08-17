@@ -1,0 +1,138 @@
+version: '3.7'
+
+services:
+  logstash-opensearch:
+    image: opensearchproject/logstash-oss-with-opensearch-output-plugin:7.16.3
+    #image: logstash:7.11.2
+    container_name: logstash-opensearch
+    ports:
+      - "5514:5514"
+      - "5515:5515"
+      - "5516:5516"
+      - "6514:6514"
+      - "6515:6515/udp"
+      - "6516:6516/udp"
+      - "5044:5044"
+      - "5045:5045"
+      - "5046:5046"
+      - "5047:5047"
+      - "5049:5049"
+      - "6044:6044"
+      - "6045:6045"
+    expose:
+      - "5514"
+      - "5515"
+      - "5516"
+      - "6514"
+      - "6515"
+      - "6516"
+      - "5044"
+      - "5045"
+      - "5046"
+      - "5047"
+      - "6044"
+      - "6045"
+    environment:
+      LS_JAVA_OPTS: "-Xmx512m -Xms512m"
+    restart: always
+    volumes:
+      - ./logstash/config:/usr/share/logstash/config
+      - ./logstash/data:/usr/share/logstash/data
+      - ./logstash/mnt:/mnt
+
+  os01:
+    restart: always
+    image: opensearchproject/opensearch:2.9.0
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      node.name: os01
+      discovery.seed_hosts: os01,os02,os03
+      cluster.initial_master_nodes: os01,os02,os03
+      plugins.security.ssl.transport.pemkey_filepath: certificates/os01/os01.key # relative path
+      plugins.security.ssl.transport.pemcert_filepath: certificates/os01/os01.pem
+      plugins.security.ssl.http.pemkey_filepath: certificates/os01/os01.key
+      plugins.security.ssl.http.pemcert_filepath: certificates/os01/os01.pem
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      JAVA_HOME: /usr/share/opensearch/jdk
+      bootstrap.memory_lock: "true" # along with the memlock settings below, disables swapping
+      network.host: "0.0.0.0"
+    ulimits: 
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - "./opensearch.yml:/usr/share/opensearch/config/opensearch.yml"
+      #- "os-data1:/usr/share/opensearch/data"
+      - "./nodes/os1:/usr/share/opensearch/data"
+      - "./certs:/usr/share/opensearch/config/certificates:ro"
+    ports:
+      - 9200:9200
+      - 9600:9600 # required for Performance Analyzer
+  
+  os02:
+    restart: always
+    image: opensearchproject/opensearch:2.9.0
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      node.name: os02
+      discovery.seed_hosts: os01,os02,os03
+      cluster.initial_master_nodes: os01,os02,os03
+      plugins.security.ssl.transport.pemkey_filepath: certificates/os02/os02.key # relative path
+      plugins.security.ssl.transport.pemcert_filepath: certificates/os02/os02.pem
+      plugins.security.ssl.http.pemkey_filepath: certificates/os02/os02.key
+      plugins.security.ssl.http.pemcert_filepath: certificates/os02/os02.pem
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      JAVA_HOME: /usr/share/opensearch/jdk
+      bootstrap.memory_lock: "true" # along with the memlock settings below, disables swapping
+      network.host: "0.0.0.0"
+    ulimits: 
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - "./opensearch.yml:/usr/share/opensearch/config/opensearch.yml"
+      #- "os-data2:/usr/share/opensearch/data"
+      - "./nodes/os2:/usr/share/opensearch/data"
+      - "./certs:/usr/share/opensearch/config/certificates:ro"
+
+  os03:
+    restart: always
+    image: opensearchproject/opensearch:2.9.0
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      node.name: os03
+      discovery.seed_hosts: os01,os02,os03
+      cluster.initial_master_nodes: os01,os02,os03
+      plugins.security.ssl.transport.pemkey_filepath: certificates/os03/os03.key # relative path
+      plugins.security.ssl.transport.pemcert_filepath: certificates/os03/os03.pem
+      plugins.security.ssl.http.pemkey_filepath: certificates/os03/os03.key
+      plugins.security.ssl.http.pemcert_filepath: certificates/os03/os03.pem
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      JAVA_HOME: /usr/share/opensearch/jdk
+      bootstrap.memory_lock: "true" # along with the memlock settings below, disables swapping
+      network.host: "0.0.0.0"
+    ulimits: 
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - "./opensearch.yml:/usr/share/opensearch/config/opensearch.yml"
+      #- "os-data3:/usr/share/opensearch/data"
+      - "./nodes/os1:/usr/share/opensearch/data"
+      - "./certs:/usr/share/opensearch/config/certificates:ro"
+  kibana:
+    restart: always
+    image: opensearchproject/opensearch-dashboards:2.9.0
+    ports:
+      - 5601:5601
+    volumes:
+      - "./certs:/usr/share/opensearch-dashboards/config/certificates:ro"
+      - "./opensearch-dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml"
+    environment:
+      OPENSEARCH_HOSTS: '["https://os01:9200","https://os02:9200","https://os03:9200"]' # must be a string with no spaces when specified as an environment variable
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+
+volumes:
+  os-data1:
+  os-data2:
+  os-data3:
